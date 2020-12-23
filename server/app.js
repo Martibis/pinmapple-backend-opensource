@@ -98,7 +98,7 @@ async function autoCommentHiveSql(timestamp) {
       let res = await pool
         .request()
         .query(
-          "SELECT id, curator_payout_value, total_payout_value, total_pending_payout_value, pending_payout_value, author_rewards, json_metadata, title, net_votes, category, permlink, parent_permlink, author, created, url, body FROM Comments WHERE title != '' AND CONTAINS(body, 'pinmapple') AND CONTAINS(body, 'd3scr') AND created > '" +
+          "SELECT id, curator_payout_value, total_payout_value, total_pending_payout_value, pending_payout_value, author_rewards, json_metadata, title, net_votes, category, permlink, parent_permlink, author, created, url, body FROM Comments WHERE depth = 0 AND CONTAINS(body, 'pinmapple') AND CONTAINS(body, 'd3scr') AND created > '" +
             timestamp +
             "' ORDER BY created DESC"
         );
