@@ -56,6 +56,7 @@ const mssqlConfig = {
     encrypt: true,
     enableArithAbort: true,
   },
+  trustServerCertificate: true,
 };
 
 const connection = mysql.createConnection({
@@ -69,18 +70,21 @@ const connection = mysql.createConnection({
 });
 
 const dhive = require("@hiveio/dhive");
-const { title } = require("process");
-const { post } = require("request-promise");
 
 const hiveClient = new dhive.Client([
   "https://api.hive.blog",
-  "https://api.hivekings.com",
   "https://anyx.io",
   "https://api.openhive.network",
 ]);
 const postingKey = dhive.PrivateKey.fromString(pinmapplePostingKey);
 
+let cronRunning = false;
+
 cron.schedule("0 */10 * * * *", async () => {
+  if (cronRunning) {
+    return;
+  }
+  cronRunning = true;
   var ourDate = new Date();
 
   //Change it so that it is 7 days in the past.
@@ -88,23 +92,24 @@ cron.schedule("0 */10 * * * *", async () => {
   ourDate.setDate(pastDate);
   let timestamp = ourDate.toISOString();
   await autoCommentHiveSql(timestamp);
+  cronRunning = false;
 });
 
 async function autoCommentHiveSql(timestamp) {
-  console.log("Off we go");
   await (async function () {
     try {
       let pool = await mssql.connect(mssqlConfig);
       let res = await pool
         .request()
         .query(
-          "SELECT id, curator_payout_value, total_payout_value, total_pending_payout_value, pending_payout_value, author_rewards, json_metadata, title, net_votes, category, permlink, parent_permlink, author, created, url, body FROM Comments WHERE depth = 0 AND CONTAINS(body, 'pinmapple') AND CONTAINS(body, 'd3scr') AND created > '" +
+          "SELECT id, curator_payout_value, total_payout_value, total_pending_payout_value, pending_payout_value, author_rewards, json_metadata, title, net_votes, category, permlink, parent_permlink, author, created, url, body FROM Comments WHERE depth = 0 AND title != '' AND CONTAINS(body, 'pinmapple') AND CONTAINS(body, 'd3scr') AND created > '" +
             timestamp +
             "' ORDER BY created DESC"
         );
       let posts = res.recordsets[0];
       console.log(posts.length);
-      let reg = /!pinmapple -*[0-9]+\.*[0-9]* lat -*[0-9]+\.*[0-9]* long.*?d3scr/g;
+      let reg =
+        /!pinmapple -*[0-9]+\.*[0-9]* lat -*[0-9]+\.*[0-9]* long.*?d3scr/g;
       for (let i = 0; i < posts.length; i++) {
         if (posts[i].body.match(reg)) {
           let p = posts[i];
@@ -184,7 +189,7 @@ async function autoCommentHiveSql(timestamp) {
           let postbody = p.body;
           var promiseToWait = new Promise(function (resolve, reject) {
             if (
-              postvalue > 0.01 &&
+              postvalue > 0.02 &&
               lat != 0 &&
               long != 0 &&
               lat != undefined &&
@@ -302,11 +307,39 @@ async function makeComment(pa, ppl) {
       Math.floor(Math.random() * 100).toString(),
     json_metadata: "",
   };
-  await hiveClient.broadcast.comment(comment, postingKey).then(
-    function (result) {
-      console.log("comment broadcast result", result);
+  try {
+    const { id } = await hiveClient.broadcast.comment(comment, postingKey);
+    console.log(`Transaction ID: ${id}`);
+
+    const queryStringTwo =
+      "UPDATE markerinfo SET isCommented = 1 WHERE username = ? AND postPermLink = ?";
+    connection.query(
+      queryStringTwo,
+      [pa.toString(), ppl.toString()],
+      async (err3, res3, fields2) => {
+        if (err3) {
+          console.log(err3);
+        } else {
+          console.log("Updated iscommented in DB");
+        }
+      }
+    );
+
+    let tx = null;
+
+    do {
+      tx = await hiveClient.transaction.findTransaction(id);
+      console.log(`Transaction status: ${tx.status}`);
+      await wait(1000);
+    } while (tx.status == "within_mempool");
+
+    if (tx.status == "within_reversible_block") {
+      console.log("Transaction confirmed");
+    } else {
+      //SOMETHING WENT WRONG
+      console.log(`Transaction status: ${tx.status}`);
       const queryStringTwo =
-        "UPDATE markerinfo SET isCommented = 1 WHERE username = ? AND postPermLink = ?";
+        "UPDATE markerinfo SET isCommented = 0 WHERE username = ? AND postPermLink = ?";
       connection.query(
         queryStringTwo,
         [pa.toString(), ppl.toString()],
@@ -318,11 +351,10 @@ async function makeComment(pa, ppl) {
           }
         }
       );
-    },
-    function (error) {
-      console.error(error);
     }
-  );
+  } catch (err) {
+    console.error(err);
+  }
 }
 async function wait(ms) {
   return new Promise((resolve) => {
