@@ -330,7 +330,7 @@ async function makeComment(pa, ppl) {
     do {
       tx = await hiveClient.transaction.findTransaction(id);
       console.log(`Transaction status: ${tx.status}`);
-      await wait(1000);
+      await wait(500);
     } while (tx.status == "within_mempool");
 
     if (tx.status == "within_reversible_block") {
@@ -353,7 +353,21 @@ async function makeComment(pa, ppl) {
       );
     }
   } catch (err) {
+    //SOMETHING DEFINITELY WENT WRONG
     console.error(err);
+    const queryStringTwo =
+      "UPDATE markerinfo SET isCommented = 0 WHERE username = ? AND postPermLink = ?";
+    connection.query(
+      queryStringTwo,
+      [pa.toString(), ppl.toString()],
+      async (err3, res3, fields2) => {
+        if (err3) {
+          console.log(err3);
+        } else {
+          console.log("Updated iscommented in DB");
+        }
+      }
+    );
   }
 }
 async function wait(ms) {
