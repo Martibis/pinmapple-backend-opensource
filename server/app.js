@@ -72,15 +72,15 @@ const connection = mysql.createConnection({
 const dhive = require("@hiveio/dhive");
 
 const hiveClient = new dhive.Client([
-  "https://api.hive.blog",
   "https://anyx.io",
+  "https://api.hive.blog",
   "https://api.openhive.network",
 ]);
 const postingKey = dhive.PrivateKey.fromString(pinmapplePostingKey);
 
 let cronRunning = false;
 
-cron.schedule("0 */10 * * * *", async () => {
+cron.schedule("0 */15 * * * *", async () => {
   if (cronRunning) {
     return;
   }
@@ -320,7 +320,7 @@ async function makeComment(pa, ppl) {
         if (err3) {
           console.log(err3);
         } else {
-          console.log("Updated iscommented in DB");
+          console.log("Updated iscommented to 1 in DB");
         }
       }
     );
@@ -329,7 +329,7 @@ async function makeComment(pa, ppl) {
 
     do {
       tx = await hiveClient.transaction.findTransaction(id);
-      console.log(`Transaction status: ${tx.status}`);
+      console.log(`Transaction status (in while loop): ${tx.status}`);
       await wait(500);
     } while (tx.status == "within_mempool");
 
@@ -347,7 +347,7 @@ async function makeComment(pa, ppl) {
           if (err3) {
             console.log(err3);
           } else {
-            console.log("Updated iscommented in DB");
+            console.log("Updated iscommented to 0 in DB");
           }
         }
       );
@@ -364,7 +364,7 @@ async function makeComment(pa, ppl) {
         if (err3) {
           console.log(err3);
         } else {
-          console.log("Updated iscommented in DB");
+          console.log("Updated iscommented to 0 in DB in error");
         }
       }
     );
